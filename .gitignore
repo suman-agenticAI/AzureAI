@@ -1,0 +1,5 @@
+.env
+azure_ai_env/
+__pycache__/
+*.pyc
+agent_config.json
