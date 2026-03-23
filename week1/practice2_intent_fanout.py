@@ -187,11 +187,51 @@ async def main():
             ]
         )
 
-        # Step 3: Print results
+        # Step 3: Print individual results
         for intent, response in results:
             print(f"=== {intent.upper()} ===")
             print(response)
             print()
+
+        # Step 4: Fan-in — Aggregator combines all results into one recommendation
+        print("=== AGGREGATING RESULTS ===\n")
+
+        # Build combined input for aggregator
+        combined = "\n\n".join(
+            f"[{intent.upper()} ANALYSIS]:\n{response}"
+            for intent, response in results
+        )
+
+        aggregator = await client.create_agent(
+            model=os.getenv("MODEL_DEPLOYMENT_NAME"),
+            name="aggregator",
+            instructions="""You are a senior account strategist.
+            You receive analysis from multiple specialists.
+            Your job:
+            - Read ALL specialist analyses
+            - Identify the TOP 3 priority actions (across all analyses)
+            - Give ONE unified recommendation
+            - Keep it to 5-6 sentences max""",
+        )
+
+        agg_run = await client.create_thread_and_process_run(
+            agent_id=aggregator.id,
+            thread=AgentThreadCreationOptions(
+                messages=[ThreadMessageOptions(
+                    role="user",
+                    content=f"Customer message: {user_message}\n\nSpecialist analyses:\n{combined}\n\nGive me the top 3 priorities and one unified recommendation.",
+                )]
+            ),
+        )
+
+        # Print aggregated result
+        agg_messages = client.messages.list(thread_id=agg_run.thread_id)
+        async for msg in agg_messages:
+            if msg.role == "assistant":
+                print(f"FINAL RECOMMENDATION:\n{msg.content[0].text.value}")
+                break
+
+        await client.delete_agent(aggregator.id)
 
     await credential.close()
 
